@@ -246,17 +246,7 @@ class Genius(API):
             print('Done.')
         return song
 
-    def search_artist(self, artist_name, max_songs=None,
-                      sort='popularity', per_page=20, get_full_info=True):
-        """Search Genius.com for songs by the specified artist.
-        Returns an Artist object containing artist's songs.
-        :param artist_name: Name of the artist to search for
-        :param max_songs: Maximum number of songs to search for
-        :param sort: Sort by 'title' or 'popularity'
-        :param per_page: Number of results to return per search page
-        :param get_full_info: Get full info for each song (slower)
-        """
-
+    def get_artist_object_from_name(self, artist_name):
         if self.verbose:
             print('Searching for songs by {0}...\n'.format(artist_name))
 
@@ -282,12 +272,15 @@ class Genius(API):
 
         # Create the Artist object
         artist = Artist(artist_info)
-
+        artist.artist_id_ = artist_id
+        return artist
+    
+    def get_song_objects_from_artist(self, artist, sort='popularity', per_page=20):
         # Download each song by artist, stored as Song objects in Artist object
         page = 1
         reached_max_songs = False
         while not reached_max_songs:
-            songs_on_page = self.get_artist_songs(artist_id, sort, per_page, page)
+            songs_on_page = self.get_artist_songs(artist.artist_id_, sort, per_page, page)
 
             # Loop through each song on page of search results
             for song_info in songs_on_page['songs']:
@@ -303,26 +296,7 @@ class Genius(API):
                         print('"{s}" is not valid. Skipping.'.format(s=s))
                     continue
 
-                # Create the Song object from lyrics and metadata
-                lyrics = self._scrape_song_lyrics_from_url(song_info['url'])
-                if get_full_info:
-                    info = self.get_song(song_info['id'])
-                else:
-                    info = {'song': song_info}
-                song = Song(info, lyrics)
-
-                # Attempt to add the Song to the Artist
-                result = artist.add_song(song, verbose=False)
-                if result == 0 and self.verbose:
-                    print('Song {n}: "{t}"'.format(n=artist.num_songs,
-                                                   t=song.title))
-
-                # Exit search if the max number of songs has been met
-                reached_max_songs = max_songs and artist.num_songs >= max_songs
-                if reached_max_songs:
-                    if self.verbose:
-                        print('\nReached user-specified song limit ({m}).'.format(m=max_songs))
-                    break
+                yield song_info
 
             # Move on to next page of search results
             page = songs_on_page['next_page']
@@ -332,6 +306,46 @@ class Genius(API):
         if self.verbose:
             print('Done. Found {n} songs.'.format(n=artist.num_songs))
         return artist
+
+        
+
+    def search_artist(self, artist_name, max_songs=None,
+                      sort='popularity', per_page=20, get_full_info=True):
+        """Search Genius.com for songs by the specified artist.
+        Returns an Artist object containing artist's songs.
+        :param artist_name: Name of the artist to search for
+        :param max_songs: Maximum number of songs to search for
+        :param sort: Sort by 'title' or 'popularity'
+        :param per_page: Number of results to return per search page
+        :param get_full_info: Get full info for each song (slower)
+        """
+
+        artist = self.get_artist_object_from_name(artist_name)
+        for song_info in self.get_song_objects_from_artist(artist, sort=sort, per_page=per_page):
+            # Create the Song object from lyrics and metadata
+            lyrics = self._scrape_song_lyrics_from_url(song_info['url'])
+            if get_full_info:
+                info = self.get_song(song_info['id'])
+            else:
+                info = {'song': song_info}
+            song = Song(info, lyrics)
+
+            # Attempt to add the Song to the Artist
+            result = artist.add_song(song, verbose=False)
+            if result == 0 and self.verbose:
+                print('Song {n}: "{t}"'.format(n=artist.num_songs,
+                                                t=song.title))
+
+            # Exit search if the max number of songs has been met
+            reached_max_songs = max_songs and artist.num_songs >= max_songs
+            if reached_max_songs:
+                if self.verbose:
+                    print('\nReached user-specified song limit ({m}).'.format(m=max_songs))
+                break
+        return artist
+        
+
+       
 
     def save_artists(self, artists, filename="artist_lyrics", overwrite=False):
         """Save lyrics from multiple Artist objects as JSON object
