@@ -273,14 +273,15 @@ class Genius(API):
         # Create the Artist object
         artist = Artist(artist_info)
         artist.artist_id_ = artist_id
+        artist.data = found_artist
         return artist
     
-    def get_song_objects_from_artist(self, artist, sort='popularity', per_page=20):
+    def get_song_objects_for_artist_id(self, artist_id, sort='popularity', per_page=20):
         # Download each song by artist, stored as Song objects in Artist object
         page = 1
         reached_max_songs = False
         while not reached_max_songs:
-            songs_on_page = self.get_artist_songs(artist.artist_id_, sort, per_page, page)
+            songs_on_page = self.get_artist_songs(artist_id, sort, per_page, page)
 
             # Loop through each song on page of search results
             for song_info in songs_on_page['songs']:
@@ -303,9 +304,6 @@ class Genius(API):
             if page is None:
                 break  # Exit search when last page is reached
 
-        if self.verbose:
-            print('Done. Found {n} songs.'.format(n=artist.num_songs))
-        return artist
 
         
 
@@ -321,7 +319,7 @@ class Genius(API):
         """
 
         artist = self.get_artist_object_from_name(artist_name)
-        for song_info in self.get_song_objects_from_artist(artist, sort=sort, per_page=per_page):
+        for song_info in self.get_song_objects_for_artist_id(artist.id_, sort=sort, per_page=per_page):
             # Create the Song object from lyrics and metadata
             lyrics = self._scrape_song_lyrics_from_url(song_info['url'])
             if get_full_info:
